@@ -1,0 +1,14 @@
+fastapi
+python-dotenv
+uvicorn
+pydantic
+python-multipart
+pillow
+requests
+transformers
+groq
+#To run our hugging face model we need to install
+torch
+torchvision
+torchaudio
+firebase-admin
