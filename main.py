@@ -97,9 +97,8 @@ app = FastAPI()
 
 # NEW CORS BLOCK
 origins = [
-    "http://localhost:5173",  # For local development
-    # TODO: After deploying to Vercel, add your frontend URL here.
-    # For example: "https://caption-it-all.vercel.app"
+    "http://localhost:5173",
+    "https://caption-it-all.vercel.app"
 ]
 
 app.add_middleware(

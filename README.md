@@ -1,11 +1,11 @@
 ---
-title: Caption It All API
+title: Caption-It-All API
 emoji: 🚀
 colorFrom: purple
 colorTo: pink
 sdk: docker
 app_port: 7860
+persistent_storage: /data
 ---
 
-# My Awesome Caption Generator Backend
-This space hosts the FastAPI backend for the Caption-It-All application.
+# Your app description...
