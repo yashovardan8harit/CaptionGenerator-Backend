@@ -26,28 +26,45 @@ load_dotenv()
 # This is the standard, recommended, and most reliable way.
 # It uses the service account JSON file directly.
 
-SERVICE_ACCOUNT_FILE = 'serviceAccountKey.json'
-
+# NEW, DEPLOYMENT-READY FIREBASE BLOCK
 try:
-    # Check if the file exists before trying to use it
-    if not os.path.exists(SERVICE_ACCOUNT_FILE):
-        raise FileNotFoundError(f"'{SERVICE_ACCOUNT_FILE}' not found. Please download it from your Firebase project settings and place it in the backend directory.")
-
-    # Initialize Firebase only if it hasn't been already
-    if not firebase_admin._apps:
+    # Check if the secret is in an environment variable (for Hugging Face/Render deployment)
+    firebase_secret_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+    
+    if firebase_secret_json:
+        # If running on a deployed server, load credentials from the environment variable
+        print("✅ Found Firebase credentials in environment variable. Initializing...")
+        cred_dict = json.loads(firebase_secret_json)
+        cred = credentials.Certificate(cred_dict)
+    else:
+        # If running locally, fall back to the local file
+        print("⚪ No Firebase secret in env, falling back to local serviceAccountKey.json...")
+        SERVICE_ACCOUNT_FILE = 'serviceAccountKey.json'
+        if not os.path.exists(SERVICE_ACCOUNT_FILE):
+             raise FileNotFoundError(f"'{SERVICE_ACCOUNT_FILE}' not found for local development.")
         cred = credentials.Certificate(SERVICE_ACCOUNT_FILE)
+
+    # Initialize the app with the determined credentials
+    if not firebase_admin._apps:
         firebase_admin.initialize_app(cred)
     print("✅ Firebase Admin SDK initialized successfully.")
 
 except Exception as e:
     print(f"⚠️ Firebase Admin SDK initialization failed: {e}")
-    print("Note: All features requiring user authentication will fail.")
-# ----------------------------------------------------
 
+# NEW, PERSISTENT DATABASE SETUP
+# Use the '/data' directory on Hugging Face/Render for persistent storage, otherwise use the local directory.
+DB_DIR = "/data" if os.path.exists("/data") else "."
+DB_PATH = os.path.join(DB_DIR, "caption_history.db")
+print(f"✅ Using database at path: {DB_PATH}")
+
+def get_db_connection():
+    """Helper function to get a database connection to the correct path."""
+    return sqlite3.connect(DB_PATH)
 
 # Initialize SQLite database for history
 def init_database():
-    conn = sqlite3.connect('caption_history.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS caption_history (
@@ -78,10 +95,16 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 # Initialize FastAPI app
 app = FastAPI()
 
-# CORS configuration for frontend dev environment
+# NEW CORS BLOCK
+origins = [
+    "http://localhost:5173",  # For local development
+    # TODO: After deploying to Vercel, add your frontend URL here.
+    # For example: "https://caption-it-all.vercel.app"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Update this if frontend URL changes
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -120,7 +143,7 @@ async def verify_token(authorization: str = Header(None)):
 
 def save_to_history(user_id: str, image_url: str, basic_caption: str, enhanced_caption: str, style: str, custom_description: str = None):
     try:
-        conn = sqlite3.connect('caption_history.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO caption_history (user_id, image_url, basic_caption, enhanced_caption, style, custom_description)
@@ -134,7 +157,7 @@ def save_to_history(user_id: str, image_url: str, basic_caption: str, enhanced_c
 
 def get_user_history(user_id: str, limit: int = 50) -> List[dict]:
     try:
-        conn = sqlite3.connect('caption_history.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
             SELECT id, image_url, basic_caption, enhanced_caption, style, custom_description, created_at
@@ -314,7 +337,7 @@ def get_history(user_id: str = Depends(verify_token), limit: int = 50):
 def delete_history_item(history_id: int, user_id: str = Depends(verify_token)):
     try:
         # ... (Your existing code for this endpoint) ...
-        conn = sqlite3.connect('caption_history.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT user_id FROM caption_history WHERE id = ?', (history_id,))
         result = cursor.fetchone()
@@ -340,7 +363,7 @@ def delete_history_item(history_id: int, user_id: str = Depends(verify_token)):
 def clear_all_history(user_id: str = Depends(verify_token)):
     try:
         # ... (Your existing code for this endpoint) ...
-        conn = sqlite3.connect('caption_history.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('DELETE FROM caption_history WHERE user_id = ?', (user_id,))
         deleted_count = cursor.rowcount
